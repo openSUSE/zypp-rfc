@@ -145,15 +145,11 @@ are not completely visible on one page.
 With a functional approach we can do better, to better understand the code this are some of the
 special callbacks used:
 
-  * lift -> a helper function that allows us to remember values of type A by "lifing" or wrapping a function accepting type B and returning R to a function 
-    accepting pair<B,A> and returning pair<R,A>
-  * transform -> this is commonly known as "map" in other languages, however transform is the term used in the std library. A function that maps a set
-    of values e.g. vector<A> into a set of values e.g vector<B> using a callback "f(A) -> B"
-  * filter -> forward only values from the input set that pass the given predicate
-  * mbind -> This function accepts a type of expected<A> and and a callback "f(A)->expected<B>", only executing the callback if the expected type does not contain
-    a error, otherwise the error is directly forwarded.
-  * waitWhile -> A function taking a set of AsyncResult instances, waiting for them to get ready. If a result gets ready the given callback is called, depending on its 
-    return value the loop is cancelled or continues
+  * `lift` -> a helper function that allows us to remember values of type `A` by "lifing" or wrapping a function `f(B)->R` to a function `f(pair<B,A>)->pair<R,A>` 
+  * `transform` -> this is commonly known as "map" in other languages, however transform is the term used in the std library. A function that maps a set of values e.g. `vector<A>` into a set of values e.g `vector<B>` using callback `f(A) -> B`
+  * `filter` -> forward only values from the input set that pass the given predicate
+  * `mbind` -> This function accepts a type of `expected<A>` and and a callback `f(A)->expected<B>`, only executing the callback if the expected type does not contain a error, otherwise the error is directly forwarded.
+  * `waitWhile` -> A function taking a set of `AsyncResult` instances, waiting for them to get ready. If a result gets ready the given callback is called, depending on its return value the loop is cancelled or continues
 
 
 ```cpp
