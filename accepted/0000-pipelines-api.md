@@ -95,6 +95,7 @@ class PackageInstaller {
     void installFileFromCache ( PackageInfo spec ) {
         Process::Ptr proc = Process::run( std::string("rpm -i ")+spec.cacheDir()+"/"+spec.fileName() );
         proc->sigFinished().connect( sigc::mem_fun(this, &PackageInstaller::installFinished ) );
+        _runningInstalls.push_back( std::move(proc) );
     }
 
     void installFinished ( Process &proc ) {
@@ -142,10 +143,9 @@ The above example is small but already needs lots of explicit state handling and
 cluttered over several class member functions that make the code hard to read, especially if the class grows bigger and the functions
 are not completely visible on one page.
 
-With a functional approach we can do better, to better understand the code this are some of the
-special callbacks used:
+With a functional approach we can do better, to understand the example code this are some of the special callbacks used:
 
-  * `lift` -> a helper function that allows us to remember values of type `A` by "lifing" or wrapping a function `f(B)->R` to a function `f(pair<B,A>)->pair<R,A>` 
+  * `lift` -> a helper function that allows us to remember values of type `A` by "lifting" or wrapping a function `f(B)->R` to a function `f(pair<B,A>)->pair<R,A>` 
   * `transform` -> this is commonly known as "map" in other languages, however transform is the term used in the std library. A function that maps a set of values e.g. `vector<A>` into a set of values e.g `vector<B>` using callback `f(A) -> B`
   * `filter` -> forward only values from the input set that pass the given predicate
   * `mbind` -> This function accepts a type of `expected<A>` and and a callback `f(A)->expected<B>`, only executing the callback if the expected type does not contain a error, otherwise the error is directly forwarded.
@@ -230,11 +230,9 @@ There are several libraries available that support this for synchronous pipeline
   * RangesV3: https://github.com/ericniebler/range-v3
   * C++20 Ranges
 
-However, those libraries do not support async pipelines. Wether we can enable them to work together with a async pipeline implementation needs to be tested during implementation,
-usually they work by providing lazy evaluation by passing iterators instead of values through the pipeline, which implies that the initial set/vector/map/value needs
-to be valid throughout the pipeline, something that is not given with a pipeline that does not own the input value.
+However, those libraries do not support async pipelines. Wether we can enable them to work together with a async pipeline implementation needs to be tested during implementation, usually they work by providing lazy evaluation by passing iterators instead of values through the pipeline, which implies that the initial set/vector/map/value needs to be valid throughout the pipeline, something that is not given with a pipeline that does not own the input value. In case they can not be used, a basic set of required algorithms needs to be implemented in libzypp directly.
 
-In order to make this work, a basic building block is required that supports the possibility of having a asynchronous task:
+In order to implement the asynchronous pipelines, a basic building block is required that supports the possibility of having a asynchronous task:
 
 ```cpp
 template<typename Res>
@@ -251,7 +249,7 @@ struct AsyncJob
 
 ```
 
-This is the base for all asynchronous operations that can be used in a pipeline. 
+This is the base for all asynchronous operations that can be used in a pipeline. It can either directly forward the result of its computation to a callback that is registered through `onReady` or store it internally until a callback is registered or `get` is called to obtain it.
 Implementing a async operation is as simple as:
 
 ```cpp
@@ -336,7 +334,14 @@ forwarding results when they are ready.
     };
 
 ```
+In the POC implementation the input and result values that travel through the pipeline are always moved, to avoid copies, 
+while this is a performant approach it might not always be what is required. The pipeline should be flexible enough to allow
+copy or move semantics, depending on the input parameters of the given callback. Maybe warning or failing to compile if a callback 
+accepting a reference is used as asynchronous callback. 
 
+The pipelines are well defined at compile time, which means there are no type conversion errors at runtime and no virtual calls involved
+to keep the performance impact as low as possible. To clear up memory asap, every async operation in the pipeline is allowed to 
+clean up its predecessor as soon as it gets ready.
 
 
 # Drawbacks
@@ -344,19 +349,16 @@ forwarding results when they are ready.
 
 Why should we **not** do this?
 
-  * obscure corner cases
-  * will it impact performance?
-  * what other parts of the product will be affected?
-  * will the solution be hard to maintain in the future?
+  * Needs a different way of thinking about structuring code
+  * Needs a reimplementation of lots of code, however the async nature of the new API requires the same
 
 # Alternatives
 [alternatives]: #alternatives
 
-- What other designs/options have been considered?
-- What is the impact of not doing this?
+- Stick with the signal/slot object approach, it is a way that would definately work out, however it is much more verbose and requires a lot of boilerplate code, like manual implementation of statemachines etc.
 
 # Unresolved questions
 [unresolved]: #unresolved-questions
 
-- What are the unknowns?
-- What can happen if Murphy's law holds true?
+- Can we make use of existing range libraries with the async nature. E.g. auto convert range iterators to the set types so we can forward them in the pipeline?
+- Can we get the pipeline to automatically adapt to use references/move references/copies based on the callback functions arguments. And warn about using references with async code.
